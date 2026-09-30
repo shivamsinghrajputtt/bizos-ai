@@ -14,6 +14,7 @@ export default function AIAssistantPage() {
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [asking, setAsking] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -56,7 +57,9 @@ export default function AIAssistantPage() {
   }, [router, supabase]);
 
   function ask() {
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
+    if (!q || asking) return;
+    setAsking(true);
 
     if (q.includes("lead") || q.includes("hot")) {
       setAnswer(
@@ -76,6 +79,7 @@ export default function AIAssistantPage() {
         " open tasks. Ask about leads, customers or tasks."
       );
     }
+    window.setTimeout(() => setAsking(false), 150);
   }
 
   if (loading) {
@@ -126,8 +130,8 @@ export default function AIAssistantPage() {
               placeholder="Which leads need attention?"
               className="flex-1 bg-transparent px-3 py-3 text-sm outline-none"
             />
-            <button onClick={ask} className="rounded-xl bg-cyan-400 px-4 text-xs font-bold text-black">
-              Analyze
+            <button disabled={!query.trim() || asking} onClick={ask} className="rounded-xl bg-cyan-400 px-4 text-xs font-bold text-black disabled:cursor-not-allowed disabled:opacity-50">
+              {asking ? "Analyzing…" : "Analyze"}
             </button>
           </div>
 
