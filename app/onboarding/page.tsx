@@ -24,7 +24,7 @@ export default function OnboardingPage(){
   async function save(e:FormEvent){
     e.preventDefault(); if(!userId) return;
     setSaving(true); setError("");
-    const {data:org,error:orgError}=await supabase.from("organizations").insert({name,type,business_type:type,owner_id:userId}).select("id").single();
+    const {data:org,error:orgError}=await supabase.from("organizations").insert({name,business_type:type,owner_id:userId}).select("id").single();
     if(orgError){setError(orgError.message);setSaving(false);return;}
     const {error:memberError}=await supabase.from("organization_members").insert({organization_id:org.id,user_id:userId,role:"owner"});
     if(memberError){setError(memberError.message);setSaving(false);return;}
