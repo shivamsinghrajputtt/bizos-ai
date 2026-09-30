@@ -82,7 +82,9 @@ export default function Home() {
       }
       setAuthLoading(false);
     });
-  }, [router, supabase]);\n\n  const business = businesses[type];
+  }, [router, supabase]);
+
+  const business = businesses[type];
   const completion = useMemo(() => Math.round((business.modules.length / 6) * 100), [business.modules.length]);
 
   return (
