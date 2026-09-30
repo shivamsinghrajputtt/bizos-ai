@@ -57,6 +57,7 @@ export default function Home() {
   const [customerCount, setCustomerCount] = useState(0);
   const [leadCount, setLeadCount] = useState(0);
   const [hotLeadCount, setHotLeadCount] = useState(0);
+  const [openTaskCount, setOpenTaskCount] = useState(0);
   const [error, setError] = useState("");
 
   async function loadWorkspace() {
@@ -137,6 +138,7 @@ export default function Home() {
     setLeadCount(leadsResult.count || 0);
     setHotLeadCount(hotLeadsResult.count || 0);
     setCustomerCount(customersResult.count || 0);
+    setOpenTaskCount(openTasksResult.count || 0);
     setLoading(false);
   }
 
@@ -153,7 +155,7 @@ export default function Home() {
     ["New leads", String(leadCount), leadCount ? "Live" : "No leads yet"],
     ["Customers", String(customerCount), customerCount ? "Live" : "No customers yet"],
     ["Hot leads", String(hotLeadCount), hotLeadCount ? "Needs attention" : "None"],
-    ["Open tasks", String(openTasksResult.count || 0), (openTasksResult.count || 0) ? "Action queue" : "All clear"],
+    ["Open tasks", String(openTaskCount), openTaskCount ? "Action queue" : "All clear"],
   ];
 
   if (loading) {
