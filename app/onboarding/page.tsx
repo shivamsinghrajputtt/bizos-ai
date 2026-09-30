@@ -59,6 +59,7 @@ export default function OnboardingPage(){
 
   async function save(e:FormEvent){
     e.preventDefault();
+
     if (!sessionReady) {
       setError("Your login session is not ready. Please refresh and sign in again.");
       return;
@@ -76,21 +77,24 @@ export default function OnboardingPage(){
       return;
     }
 
-    const {data:org,error:orgError}=await supabase
-      .from("organizations")
-      .insert({name,business_type:type,owner_id:user.id})
-      .select("id")
-      .single();
-    if(orgError){
-      setError(orgError.message);
+    const { data: orgId, error: workspaceError } = await supabase.rpc(
+      "create_business_workspace",
+      {
+        p_name: name,
+        p_business_type: type,
+        p_description: description || null,
+        p_phone: phone || null,
+        p_website: website || null,
+      }
+    );
+
+    if (workspaceError) {
+      setError(workspaceError.message);
       setSaving(false);
       return;
     }
-    const {error:memberError}=await supabase.from("organization_members").insert({organization_id:org.id,user_id:userId,role:"owner"});
-    if(memberError){setError(memberError.message);setSaving(false);return;}
-    const {error:profileError}=await supabase.from("business_profiles").insert({organization_id:org.id,business_name:name,description,industry:type,phone,website});
-    if(profileError){setError(profileError.message);setSaving(false);return;}
-    localStorage.setItem("bizos_org_id",org.id);
+
+    localStorage.setItem("bizos_org_id", orgId);
     router.push("/");
   }
 
