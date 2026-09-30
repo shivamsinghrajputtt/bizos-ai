@@ -1,8 +1,126 @@
 create extension if not exists pgcrypto;
-create table organizations(id uuid primary key default gen_random_uuid(),name text not null,business_type text not null,created_at timestamptz default now());
-create table business_profiles(id uuid primary key default gen_random_uuid(),organization_id uuid references organizations(id) on delete cascade,business_name text not null,description text,industry text,phone text,email text,website text,timezone text default 'Asia/Kolkata',config jsonb default '{}'::jsonb,created_at timestamptz default now());
-create table customers(id uuid primary key default gen_random_uuid(),organization_id uuid references organizations(id) on delete cascade,name text not null,phone text,email text,status text default 'active',metadata jsonb default '{}'::jsonb,created_at timestamptz default now());
-create table leads(id uuid primary key default gen_random_uuid(),organization_id uuid references organizations(id) on delete cascade,customer_id uuid references customers(id) on delete set null,source text,stage text default 'new',score integer default 0,notes text,next_follow_up_at timestamptz,created_at timestamptz default now());
-create table tasks(id uuid primary key default gen_random_uuid(),organization_id uuid references organizations(id) on delete cascade,title text not null,description text,status text default 'todo',priority text default 'medium',due_at timestamptz,created_at timestamptz default now());
-create table knowledge_documents(id uuid primary key default gen_random_uuid(),organization_id uuid references organizations(id) on delete cascade,title text not null,content text not null,source_type text default 'manual',metadata jsonb default '{}'::jsonb,created_at timestamptz default now());
-create table automations(id uuid primary key default gen_random_uuid(),organization_id uuid references organizations(id) on delete cascade,name text not null,trigger_type text not null,action_type text not null,enabled boolean default true,config jsonb default '{}'::jsonb,created_at timestamptz default now());
+
+create table organizations(
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  business_type text not null,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz default now()
+);
+
+create table organization_members(
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null default 'owner' check (role in ('owner','admin','member')),
+  created_at timestamptz default now(),
+  unique(organization_id,user_id)
+);
+
+create table business_profiles(
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid unique references organizations(id) on delete cascade,
+  business_name text not null,
+  description text,
+  industry text,
+  phone text,
+  email text,
+  website text,
+  timezone text default 'Asia/Kolkata',
+  config jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table customers(
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid references organizations(id) on delete cascade,
+  name text not null,
+  phone text,
+  email text,
+  status text default 'active',
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table leads(
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid references organizations(id) on delete cascade,
+  customer_id uuid references customers(id) on delete set null,
+  source text,
+  stage text default 'new',
+  score integer default 0,
+  notes text,
+  next_follow_up_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create table tasks(
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid references organizations(id) on delete cascade,
+  title text not null,
+  description text,
+  status text default 'todo',
+  priority text default 'medium',
+  due_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create table knowledge_documents(
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid references organizations(id) on delete cascade,
+  title text not null,
+  content text not null,
+  source_type text default 'manual',
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table automations(
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid references organizations(id) on delete cascade,
+  name text not null,
+  trigger_type text not null,
+  action_type text not null,
+  enabled boolean default true,
+  config jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create or replace function public.is_org_member(target_org uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from public.organization_members where organization_id = target_org and user_id = auth.uid());
+$$;
+
+create or replace function public.is_org_owner(target_org uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from public.organizations where id = target_org and owner_id = auth.uid());
+$$;
+
+alter table organizations enable row level security;
+alter table organization_members enable row level security;
+alter table business_profiles enable row level security;
+alter table customers enable row level security;
+alter table leads enable row level security;
+alter table tasks enable row level security;
+alter table knowledge_documents enable row level security;
+alter table automations enable row level security;
+
+create policy "org members can view organizations" on organizations for select using (is_org_member(id));
+create policy "users can create organizations" on organizations for insert with check (owner_id = auth.uid());
+create policy "owners can update organizations" on organizations for update using (owner_id = auth.uid());
+
+create policy "members can view membership" on organization_members for select using (user_id = auth.uid() or is_org_member(organization_id));
+create policy "owners can add membership" on organization_members for insert with check (user_id = auth.uid() and is_org_owner(organization_id));
+create policy "owners can manage membership" on organization_members for delete using (is_org_owner(organization_id));
+
+create policy "members can manage profiles" on business_profiles for all using (is_org_member(organization_id)) with check (is_org_member(organization_id));
+create policy "members can manage customers" on customers for all using (is_org_member(organization_id)) with check (is_org_member(organization_id));
+create policy "members can manage leads" on leads for all using (is_org_member(organization_id)) with check (is_org_member(organization_id));
+create policy "members can manage tasks" on tasks for all using (is_org_member(organization_id)) with check (is_org_member(organization_id));
+create policy "members can manage knowledge" on knowledge_documents for all using (is_org_member(organization_id)) with check (is_org_member(organization_id));
+create policy "members can manage automations" on automations for all using (is_org_member(organization_id)) with check (is_org_member(organization_id));
+
+create index organization_members_user_idx on organization_members(user_id);
+create index customers_org_idx on customers(organization_id);
+create index leads_org_stage_idx on leads(organization_id,stage);
+create index tasks_org_status_idx on tasks(organization_id,status);
