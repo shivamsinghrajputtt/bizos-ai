@@ -165,7 +165,7 @@ export default function Home() {
           {nav.map((item) => (
             <button
               key={item}
-              onClick={() => setActiveNav(item)}
+              onClick={() => item === "Overview" ? setActiveNav("Overview") : router.push(`/${item === "AI Assistant" ? "ai-assistant" : item.toLowerCase()}`)}
               className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${
                 activeNav === item ? "bg-white/[.08] text-white" : "text-white/45 hover:bg-white/[.04] hover:text-white"
               }`}
@@ -318,7 +318,7 @@ export default function Home() {
                     : "Add your first lead and BizOS will start finding useful signals."}
               </p>
               <button
-                onClick={() => setActiveNav("Leads")}
+                onClick={() => router.push("/leads")}
                 className="mt-6 rounded-xl bg-cyan-400 px-4 py-3 text-xs font-bold text-black transition hover:bg-cyan-300"
               >
                 Review leads →
@@ -353,7 +353,7 @@ export default function Home() {
 
         <nav className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl border border-white/10 bg-[#0b0e14]/90 p-2 backdrop-blur-xl lg:hidden">
           {nav.slice(0, 4).map((item) => (
-            <button key={item} onClick={() => setActiveNav(item)} className={`rounded-xl px-3 py-2 text-[10px] ${
+            <button key={item} onClick={() => item === "Overview" ? router.push("/") : router.push(`/${item.toLowerCase()}`)} className={`rounded-xl px-3 py-2 text-[10px] ${
               activeNav === item ? "bg-cyan-400/10 text-cyan-300" : "text-white/35"
             }`}>
               {item}
