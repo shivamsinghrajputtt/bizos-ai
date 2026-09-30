@@ -4,88 +4,147 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "../lib/supabase/client";
 
-type Business = {
-  description: string;
-  modules: string[];
-  metrics: [string, string, string][];
-  tasks: [string, string, string][];
+type Lead = {
+  id: string;
+  stage: string | null;
+  score: number | null;
+  created_at: string;
+  customer: { name: string | null } | null;
 };
 
-const businesses: Record<string, Business> = {
-  "Real Estate": {
-    description: "Turn property enquiries into qualified site visits and deals.",
-    modules: ["Leads", "Properties", "Site Visits", "Agents", "Deals", "Follow-ups"],
-    metrics: [["New leads", "12", "+18%"], ["Site visits", "06", "Today"], ["Hot leads", "04", "2 new"], ["Pipeline", "₹48.2L", "+12%"]],
-    tasks: [["Follow up with Rahul", "Lead • Hot", "1h ago"], ["Review new lead: Priya", "Lead • New", "2h ago"], ["Send proposal to Apex", "Deal • Pending", "3h ago"]]
-  },
-  Salon: {
-    description: "Fill your calendar, retain customers and automate follow-ups.",
-    modules: ["Customers", "Appointments", "Services", "Staff", "Packages", "Follow-ups"],
-    metrics: [["New enquiries", "18", "+24%"], ["Appointments", "14", "Today"], ["Returning", "72%", "+8%"], ["Revenue", "₹38.6K", "+14%"]],
-    tasks: [["Confirm bridal package", "Booking • Today", "30m ago"], ["Follow up with Neha", "Customer • Warm", "1h ago"], ["Review tomorrow's slots", "Calendar • 6 open", "2h ago"]]
-  },
-  Gym: {
-    description: "Convert enquiries into memberships and keep members engaged.",
-    modules: ["Members", "Memberships", "Attendance", "Plans", "Payments", "Follow-ups"],
-    metrics: [["New enquiries", "21", "+31%"], ["Renewals", "09", "This week"], ["At risk", "05", "3 new"], ["Revenue", "₹64.8K", "+16%"]],
-    tasks: [["Call renewal list", "Membership • 9", "45m ago"], ["Message inactive members", "Retention • 5", "1h ago"], ["Review new enquiry", "Lead • Hot", "2h ago"]]
-  },
-  Restaurant: {
-    description: "Manage customers, reservations and repeat orders from one workspace.",
-    modules: ["Customers", "Orders", "Reservations", "Menu", "Reviews", "Marketing"],
-    metrics: [["New customers", "34", "+22%"], ["Reservations", "28", "Today"], ["Repeat orders", "41%", "+6%"], ["Revenue", "₹82.4K", "+11%"]],
-    tasks: [["Confirm group reservation", "Booking • 8 guests", "20m ago"], ["Reply to review", "Reputation • 4.2★", "1h ago"], ["Launch weekend offer", "Marketing • Draft", "2h ago"]]
-  },
-  Coaching: {
-    description: "Capture student enquiries, manage batches and keep fee follow-ups on track.",
-    modules: ["Students", "Batches", "Courses", "Fees", "Leads", "Follow-ups"],
-    metrics: [["New enquiries", "27", "+29%"], ["Admissions", "11", "This month"], ["Fee pending", "07", "Needs action"], ["Revenue", "₹1.42L", "+19%"]],
-    tasks: [["Call parent enquiry", "Lead • Hot", "35m ago"], ["Send fee reminder", "Fees • 7", "1h ago"], ["Review batch capacity", "Batch • 82%", "3h ago"]]
-  },
-  Agency: {
-    description: "Keep clients, projects, proposals and follow-ups moving together.",
-    modules: ["Clients", "Projects", "Proposals", "Invoices", "Tasks", "Follow-ups"],
-    metrics: [["New leads", "09", "+13%"], ["Active projects", "16", "3 due"], ["Proposals", "05", "2 hot"], ["Pipeline", "₹18.7L", "+21%"]],
-    tasks: [["Follow up with Apex", "Proposal • Hot", "45m ago"], ["Review campaign brief", "Project • Due", "2h ago"], ["Send invoice #104", "Invoice • Pending", "3h ago"]]
-  }
+type Task = {
+  id: string;
+  title: string;
+  status: string | null;
+  priority: string | null;
+  due_at: string | null;
 };
 
 const nav = ["Overview", "Leads", "Customers", "Tasks", "AI Assistant"];
 
+function formatTime(value: string | null) {
+  if (!value) return "No due date";
+  const date = new Date(value);
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.max(1, Math.round(Math.abs(diff) / 60000));
+  if (diff >= 0) {
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.round(hours / 24)}d ago`;
+  }
+  return `Due in ${minutes < 60 ? `${minutes}m` : `${Math.round(minutes / 60)}h`}`;
+}
+
 export default function Home() {
   const router = useRouter();
-  const supabase = createClient();
-  const [authLoading, setAuthLoading] = useState(true);
+  const supabase = useMemo(() => createClient(), []);
+  const [loading, setLoading] = useState(true);
   const [type, setType] = useState("Real Estate");
-  const [open, setOpen] = useState(false);
+  const [businessName, setBusinessName] = useState("Your workspace");
   const [activeNav, setActiveNav] = useState("Overview");
   const [command, setCommand] = useState("");
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [customerCount, setCustomerCount] = useState(0);
+  const [leadCount, setLeadCount] = useState(0);
+  const [hotLeadCount, setHotLeadCount] = useState(0);
+  const [error, setError] = useState("");
+
+  async function loadWorkspace() {
+    setError("");
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) {
+      router.replace("/login");
+      return;
+    }
+
+    const orgId = localStorage.getItem("bizos_org_id");
+    if (!orgId) {
+      router.replace("/onboarding");
+      return;
+    }
+
+    const [profileResult, leadsResult, tasksResult, customersResult, hotLeadsResult] =
+      await Promise.all([
+        supabase
+          .from("business_profiles")
+          .select("business_name, industry")
+          .eq("organization_id", orgId)
+          .maybeSingle(),
+        supabase
+          .from("leads")
+          .select("id, stage, score, created_at, customer:customers(name)")
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false })
+          .limit(6),
+        supabase
+          .from("tasks")
+          .select("id, title, status, priority, due_at")
+          .eq("organization_id", orgId)
+          .neq("status", "done")
+          .order("due_at", { ascending: true, nullsFirst: false })
+          .limit(6),
+        supabase
+          .from("customers")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId),
+        supabase
+          .from("leads")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .gte("score", 70),
+      ]);
+
+    const firstError =
+      profileResult.error ||
+      leadsResult.error ||
+      tasksResult.error ||
+      customersResult.error ||
+      hotLeadsResult.error;
+
+    if (firstError) {
+      setError(firstError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (profileResult.data?.industry) setType(profileResult.data.industry);
+    if (profileResult.data?.business_name) setBusinessName(profileResult.data.business_name);
+    setLeads((leadsResult.data as Lead[]) || []);
+    setTasks((tasksResult.data as Task[]) || []);
+    setLeadCount(leadsResult.count || 0);
+    setHotLeadCount(hotLeadsResult.count || 0);
+    setCustomerCount(customersResult.count || 0);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) {
-        router.replace("/login");
-        return;
-      }
-      const orgId = localStorage.getItem("bizos_org_id");
-      if (!orgId) {
-        router.replace("/onboarding");
-        return;
-      }
-      const { data: profile } = await supabase
-        .from("business_profiles")
-        .select("industry")
-        .eq("organization_id", orgId)
-        .maybeSingle();
-      if (profile?.industry && businesses[profile.industry]) {
-        setType(profile.industry);
-      }
-      setAuthLoading(false);
-    });
-  }, [router, supabase]);
+    loadWorkspace();
+  }, []);
 
-  const business = businesses[type];
-  const completion = useMemo(() => Math.round((business.modules.length / 6) * 100), [business.modules.length]);
+  const staleLeads = leads.filter((lead) => {
+    const created = new Date(lead.created_at).getTime();
+    return Date.now() - created > 24 * 60 * 60 * 1000 && lead.stage !== "won";
+  }).length;
+
+  const metrics = [
+    ["New leads", String(leadCount), leadCount ? "Live" : "No leads yet"],
+    ["Customers", String(customerCount), customerCount ? "Live" : "No customers yet"],
+    ["Hot leads", String(hotLeadCount), hotLeadCount ? "Needs attention" : "None"],
+    ["Open tasks", String(tasks.length), tasks.length ? "Action queue" : "All clear"],
+  ];
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#05070b] grid place-items-center text-white">
+        <div className="text-center">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-cyan-400 font-black text-black">B</div>
+          <p className="mt-4 text-sm text-white/40">Loading your workspace…</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#05070b] text-white selection:bg-cyan-400/30">
@@ -93,85 +152,150 @@ export default function Home() {
       <div className="pointer-events-none fixed -left-40 top-20 -z-0 h-96 w-96 rounded-full bg-cyan-400/10 blur-[120px]" />
       <div className="pointer-events-none fixed -right-40 bottom-0 -z-0 h-96 w-96 rounded-full bg-blue-600/10 blur-[120px]" />
 
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-white/10 bg-[#07090d]/85 p-5 backdrop-blur-xl lg:flex lg:flex-col">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-white/10 bg-[#07090d]/90 p-5 backdrop-blur-xl lg:flex lg:flex-col">
         <div className="flex items-center gap-3 border-b border-white/10 pb-6">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-cyan-400 font-black text-black">B</div>
-          <div><div className="font-bold tracking-tight">BIZ<span className="text-cyan-400">OS</span></div><div className="text-[9px] tracking-[.28em] text-white/35">BUSINESS OS</div></div>
+          <div>
+            <div className="font-bold">BIZ<span className="text-cyan-400">OS</span></div>
+            <div className="text-[9px] tracking-[.28em] text-white/35">BUSINESS OS</div>
+          </div>
         </div>
+
         <nav className="mt-7 space-y-1">
           {nav.map((item) => (
-            <button key={item} onClick={() => setActiveNav(item)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${activeNav === item ? "bg-white/[.08] text-white" : "text-white/45 hover:bg-white/[.04] hover:text-white"}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${activeNav === item ? "bg-cyan-400 shadow-[0_0_12px_#22d3ee]" : "bg-white/20"}`} />{item}
+            <button
+              key={item}
+              onClick={() => setActiveNav(item)}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${
+                activeNav === item ? "bg-white/[.08] text-white" : "text-white/45 hover:bg-white/[.04] hover:text-white"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${
+                activeNav === item ? "bg-cyan-400 shadow-[0_0_12px_#22d3ee]" : "bg-white/20"
+              }`} />
+              {item}
             </button>
           ))}
         </nav>
+
         <div className="mt-auto rounded-2xl border border-cyan-400/15 bg-cyan-400/[.035] p-4">
           <div className="text-[10px] font-semibold tracking-[.2em] text-cyan-400">AI STATUS</div>
-          <div className="mt-3 flex items-center gap-2 text-sm"><span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />Your AI workspace is ready</div>
-          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full w-[82%] rounded-full bg-cyan-400" /></div>
-          <div className="mt-2 text-[10px] text-white/35">82% workspace configured</div>
+          <div className="mt-3 flex items-center gap-2 text-sm">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+            Workspace connected
+          </div>
+          <div className="mt-2 text-[10px] text-white/35">Supabase data is live</div>
         </div>
       </aside>
 
       <div className="relative z-10 lg:pl-64">
         <header className="sticky top-0 z-30 border-b border-white/10 bg-[#05070b]/75 backdrop-blur-xl">
           <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-5 md:px-8">
-            <div className="lg:hidden"><span className="font-bold">BIZ<span className="text-cyan-400">OS</span></span></div>
-            <div className="hidden items-center gap-2 text-xs text-white/35 md:flex"><span className="h-2 w-2 rounded-full bg-cyan-400" />All systems operational</div>
+            <div className="lg:hidden font-bold">BIZ<span className="text-cyan-400">OS</span></div>
+            <div className="hidden items-center gap-2 text-xs text-white/35 md:flex">
+              <span className="h-2 w-2 rounded-full bg-cyan-400" />
+              Supabase connected
+            </div>
             <div className="ml-auto flex items-center gap-2">
-              <button className="rounded-xl border border-white/10 bg-white/[.03] px-3 py-2 text-xs text-white/55 hover:bg-white/[.07]">⌘ K</button>
-              <button className="rounded-xl border border-white/10 bg-white/[.03] px-3 py-2 text-xs text-white/70 hover:bg-white/[.07]">Configure</button>
+              <button
+                onClick={() => loadWorkspace()}
+                className="rounded-xl border border-white/10 bg-white/[.03] px-3 py-2 text-xs text-white/55 hover:bg-white/[.07]"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  localStorage.removeItem("bizos_org_id");
+                  router.replace("/login");
+                }}
+                className="rounded-xl border border-white/10 bg-white/[.03] px-3 py-2 text-xs text-white/70 hover:bg-white/[.07]"
+              >
+                Sign out
+              </button>
             </div>
           </div>
         </header>
 
         <section className="mx-auto max-w-[1500px] px-5 py-7 md:px-8 md:py-10">
-          <div className="flex flex-col gap-7 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/15 bg-cyan-400/[.04] px-3 py-1.5 text-[10px] font-semibold tracking-[.18em] text-cyan-300">AI COMMAND CENTER <span className="text-white/20">/</span> LIVE</div>
-              <h1 className="text-4xl font-semibold tracking-[-.04em] md:text-6xl">Run the business.<br /><span className="text-white/30">Not the busywork.</span></h1>
-              <p className="mt-4 max-w-xl text-sm leading-6 text-white/45 md:text-base">{business.description}</p>
+          <div className="max-w-4xl">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/15 bg-cyan-400/[.04] px-3 py-1.5 text-[10px] font-semibold tracking-[.18em] text-cyan-300">
+              AI COMMAND CENTER <span className="text-white/20">/</span> LIVE
             </div>
-
-            <div className="relative w-full xl:w-[280px]">
-              <div className="mb-2 text-[10px] font-semibold tracking-[.18em] text-white/30">ACTIVE BUSINESS</div>
-              <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[.045] px-4 py-3.5 text-left shadow-2xl shadow-black/20 transition hover:border-cyan-400/30 hover:bg-white/[.07]">
-                <span><span className="block text-[10px] text-white/35">WORKSPACE</span><span className="mt-0.5 block text-sm font-medium">{type}</span></span>
-                <span className={`text-white/45 transition ${open ? "rotate-180" : ""}`}>⌄</span>
-              </button>
-              {open && <div className="absolute left-0 right-0 top-[74px] z-50 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0e14] p-1.5 shadow-2xl shadow-black/60">
-                {Object.keys(businesses).map((name) => <button key={name} onClick={() => { setType(name); setOpen(false); }} className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-sm transition ${name === type ? "bg-cyan-400/10 text-cyan-300" : "text-white/65 hover:bg-white/[.06] hover:text-white"}`}>
-                  <span>{name}</span>{name === type && <span className="text-xs">✓</span>}
-                </button>)}
-              </div>}
-            </div>
+            <h1 className="text-4xl font-semibold tracking-[-.04em] md:text-6xl">
+              Run {businessName}.<br />
+              <span className="text-white/30">Not the busywork.</span>
+            </h1>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-white/45 md:text-base">
+              {type} workspace powered by your real Supabase data.
+            </p>
           </div>
 
           <div className="mt-8 rounded-2xl border border-white/10 bg-white/[.025] p-2">
             <div className="flex items-center gap-3 rounded-xl bg-black/20 px-4 py-3">
               <span className="text-cyan-400">✦</span>
-              <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="Ask BizOS anything… e.g. “Which leads need attention?”" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25" />
+              <input
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder="Ask BizOS anything… e.g. “Which leads need attention?”"
+                className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+              />
               <kbd className="hidden rounded-md border border-white/10 px-2 py-1 text-[10px] text-white/25 sm:block">⌘ ↵</kbd>
             </div>
           </div>
 
+          {error && (
+            <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/5 p-4 text-xs text-red-300">
+              Database error: {error}
+            </div>
+          )}
+
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {business.metrics.map(([label, value, trend]) => <div key={label} className="group rounded-2xl border border-white/10 bg-white/[.025] p-5 transition hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[.045]">
-              <div className="flex items-center justify-between"><span className="text-xs text-white/40">{label}</span><span className="text-[10px] text-cyan-400">{trend}</span></div>
-              <div className="mt-4 text-3xl font-semibold tracking-tight">{value}</div>
-              <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/5"><div className="h-full w-[68%] rounded-full bg-gradient-to-r from-cyan-400/80 to-blue-500/60" /></div>
-            </div>)}
+            {metrics.map(([label, value, trend]) => (
+              <div key={label} className="rounded-2xl border border-white/10 bg-white/[.025] p-5 transition hover:border-cyan-400/20 hover:bg-white/[.045]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-white/40">{label}</span>
+                  <span className="text-[10px] text-cyan-400">{trend}</span>
+                </div>
+                <div className="mt-4 text-3xl font-semibold tracking-tight">{value}</div>
+                <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/5">
+                  <div className="h-full w-[68%] rounded-full bg-gradient-to-r from-cyan-400/80 to-blue-500/60" />
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
             <div className="rounded-3xl border border-white/10 bg-white/[.025] p-5 md:p-6">
-              <div className="flex items-start justify-between"><div><div className="text-[10px] font-semibold tracking-[.18em] text-white/30">WORK QUEUE</div><h2 className="mt-1 text-xl font-semibold">What needs your attention</h2></div><span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] text-white/35">{business.tasks.length} open</span></div>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-[10px] font-semibold tracking-[.18em] text-white/30">WORK QUEUE</div>
+                  <h2 className="mt-1 text-xl font-semibold">What needs your attention</h2>
+                </div>
+                <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] text-white/35">{tasks.length} open</span>
+              </div>
+
               <div className="mt-5 space-y-2">
-                {business.tasks.map(([title, meta, time], i) => <button key={title} className="flex w-full items-center gap-4 rounded-2xl border border-white/[.06] bg-black/20 p-4 text-left transition hover:border-cyan-400/20 hover:bg-cyan-400/[.025]">
-                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${i === 0 ? "bg-cyan-400/10 text-cyan-300" : "bg-white/[.04] text-white/35"}`}>{String(i + 1).padStart(2, "0")}</span>
-                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{title}</span><span className="mt-1 block text-[11px] text-white/30">{meta}</span></span>
-                  <span className="text-[10px] text-white/25">{time}</span><span className="text-white/20">→</span>
-                </button>)}
+                {tasks.length ? tasks.map((task, i) => (
+                  <button key={task.id} className="flex w-full items-center gap-4 rounded-2xl border border-white/[.06] bg-black/20 p-4 text-left transition hover:border-cyan-400/20 hover:bg-cyan-400/[.025]">
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+                      i === 0 ? "bg-cyan-400/10 text-cyan-300" : "bg-white/[.04] text-white/35"
+                    }`}>{String(i + 1).padStart(2, "0")}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{task.title}</span>
+                      <span className="mt-1 block text-[11px] text-white/30">
+                        {task.priority || "medium"} priority • {task.status || "todo"}
+                      </span>
+                    </span>
+                    <span className="text-[10px] text-white/25">{formatTime(task.due_at)}</span>
+                    <span className="text-white/20">→</span>
+                  </button>
+                )) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center">
+                    <div className="text-sm text-white/60">Your work queue is clear.</div>
+                    <div className="mt-1 text-xs text-white/30">Create tasks and they will appear here automatically.</div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -179,23 +303,62 @@ export default function Home() {
               <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full border border-cyan-400/10" />
               <div className="absolute -right-3 -top-3 h-24 w-24 rounded-full border border-cyan-400/10" />
               <div className="text-[10px] font-semibold tracking-[.2em] text-cyan-300">AI PULSE</div>
-              <div className="mt-7 flex items-center gap-4"><div className="grid h-14 w-14 place-items-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-2xl text-cyan-300">✦</div><div><div className="text-lg font-semibold">3 actions found</div><div className="text-xs text-white/35">AI reviewed your workspace</div></div></div>
-              <p className="mt-6 text-sm leading-6 text-white/55">Three leads have gone quiet for 24+ hours. A quick follow-up could move them back into your active pipeline.</p>
-              <button className="mt-6 rounded-xl bg-cyan-400 px-4 py-3 text-xs font-bold text-black transition hover:bg-cyan-300">Review recommendations →</button>
+              <div className="mt-7 flex items-center gap-4">
+                <div className="grid h-14 w-14 place-items-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-2xl text-cyan-300">✦</div>
+                <div>
+                  <div className="text-lg font-semibold">{staleLeads} attention signals</div>
+                  <div className="text-xs text-white/35">Calculated from your live leads</div>
+                </div>
+              </div>
+              <p className="mt-6 text-sm leading-6 text-white/55">
+                {staleLeads
+                  ? `${staleLeads} recent leads look ready for a follow-up review.`
+                  : leadCount
+                    ? "No obvious stale-lead signal right now. Keep working the active pipeline."
+                    : "Add your first lead and BizOS will start finding useful signals."}
+              </p>
+              <button
+                onClick={() => setActiveNav("Leads")}
+                className="mt-6 rounded-xl bg-cyan-400 px-4 py-3 text-xs font-bold text-black transition hover:bg-cyan-300"
+              >
+                Review leads →
+              </button>
             </div>
           </div>
 
           <div className="mt-6 rounded-3xl border border-white/10 bg-white/[.025] p-5 md:p-6">
-            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-              <div><div className="text-[10px] font-semibold tracking-[.18em] text-white/30">BUSINESS DNA</div><h2 className="mt-1 text-xl font-semibold">{type} workspace</h2><p className="mt-1 text-xs text-white/35">Modules adapt automatically to the way this business operates.</p></div>
-              <div className="flex items-center gap-3"><div className="h-2 w-24 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-cyan-400" style={{ width: `${completion}%` }} /></div><span className="text-xs text-cyan-300">{completion}% configured</span></div>
+            <div>
+              <div className="text-[10px] font-semibold tracking-[.18em] text-white/30">LIVE DATA LAYER</div>
+              <h2 className="mt-1 text-xl font-semibold">Your workspace is connected</h2>
+              <p className="mt-2 text-xs leading-5 text-white/35">
+                BizOS is now reading this organization’s profile, leads, customers and tasks directly from Supabase.
+              </p>
             </div>
-            <div className="mt-6 flex flex-wrap gap-2">{business.modules.map((module, i) => <div key={module} className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2.5 text-xs text-white/55 transition hover:border-cyan-400/20 hover:text-cyan-300"><span className="mr-2 text-white/20">{String(i + 1).padStart(2, "0")}</span>{module}</div>)}</div>
+            <div className="mt-6 grid gap-2 sm:grid-cols-4">
+              {[
+                ["01", "Auth", "Connected"],
+                ["02", "Workspace", businessName],
+                ["03", "Database", "Live"],
+                ["04", "Industry", type],
+              ].map(([n, label, value]) => (
+                <div key={label} className="rounded-xl border border-white/8 bg-black/20 p-4">
+                  <div className="text-[10px] text-white/20">{n}</div>
+                  <div className="mt-2 text-xs text-white/40">{label}</div>
+                  <div className="mt-1 truncate text-sm text-cyan-300">{value}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
         <nav className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl border border-white/10 bg-[#0b0e14]/90 p-2 backdrop-blur-xl lg:hidden">
-          {nav.slice(0, 4).map((item) => <button key={item} onClick={() => setActiveNav(item)} className={`rounded-xl px-3 py-2 text-[10px] ${activeNav === item ? "bg-cyan-400/10 text-cyan-300" : "text-white/35"}`}>{item}</button>)}
+          {nav.slice(0, 4).map((item) => (
+            <button key={item} onClick={() => setActiveNav(item)} className={`rounded-xl px-3 py-2 text-[10px] ${
+              activeNav === item ? "bg-cyan-400/10 text-cyan-300" : "text-white/35"
+            }`}>
+              {item}
+            </button>
+          ))}
         </nav>
       </div>
     </main>
