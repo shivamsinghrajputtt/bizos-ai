@@ -65,7 +65,7 @@ export default function Home() {
       return;
     }
 
-    const [profileResult, leadsResult, tasksResult, customersResult, hotLeadsResult] =
+    const [profileResult, leadsResult, tasksResult, customersResult, hotLeadsResult, openTasksResult] =
       await Promise.all([
         supabase
           .from("business_profiles")
@@ -93,7 +93,13 @@ export default function Home() {
           .from("leads")
           .select("id", { count: "exact", head: true })
           .eq("organization_id", orgId)
-          .gte("score", 70),
+          .gte("score", 70)
+          .neq("stage", "lost"),
+        supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .neq("status", "done"),
       ]);
 
     const firstError =
@@ -101,7 +107,8 @@ export default function Home() {
       leadsResult.error ||
       tasksResult.error ||
       customersResult.error ||
-      hotLeadsResult.error;
+      hotLeadsResult.error ||
+      openTasksResult.error;
 
     if (firstError) {
       setError(firstError.message);
@@ -132,7 +139,7 @@ export default function Home() {
     ["New leads", String(leadCount), leadCount ? "Live" : "No leads yet"],
     ["Customers", String(customerCount), customerCount ? "Live" : "No customers yet"],
     ["Hot leads", String(hotLeadCount), hotLeadCount ? "Needs attention" : "None"],
-    ["Open tasks", String(tasks.length), tasks.length ? "Action queue" : "All clear"],
+    ["Open tasks", String(openTasksResult.count || 0), (openTasksResult.count || 0) ? "Action queue" : "All clear"],
   ];
 
   if (loading) {
