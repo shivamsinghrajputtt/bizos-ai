@@ -15,13 +15,22 @@ export default function LoginPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setNotice("");
     const result = mode === "login"
       ? await supabase.auth.signInWithPassword({email,password})
       : await supabase.auth.signUp({email,password});
-    if (result.error) setError(result.error.message);
-    else if (mode === "signup") router.push("/onboarding");
-    else router.push("/");
+    if (result.error) {
+      setError(result.error.message);
+    } else if (mode === "signup") {
+      if (result.data.session) {
+        router.push("/onboarding");
+        return;
+      }
+      setNotice("Account created. Check your email to confirm your account, then sign in.");
+    } else {
+      router.push("/");
+      return;
+    }
     setLoading(false);
   }
 
@@ -33,7 +42,8 @@ export default function LoginPage() {
         <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:border-cyan-400/50" placeholder="you@business.com"/>
         <label className="mt-5 block text-xs text-white/45">Password</label>
         <input required minLength={6} type="password" value={password} onChange={e=>setPassword(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:border-cyan-400/50" placeholder="Minimum 6 characters"/>
-        {error && <div className="mt-4 rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-xs text-red-300">{error}</div>}
+        {error && <div role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-xs text-red-300">{error}</div>}
+        {notice && <div role="status" className="mt-4 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-3 text-xs text-cyan-300">{notice}</div>}
         <button disabled={loading} className="mt-6 w-full rounded-xl bg-cyan-400 px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{loading ? "Please wait…" : mode==="login" ? "Sign in →" : "Create workspace →"}</button>
         <button type="button" onClick={()=>{setMode(mode==="login"?"signup":"login");setError("")}} className="mt-4 w-full text-xs text-white/40 hover:text-white">{mode==="login" ? "New here? Create an account" : "Already have an account? Sign in"}</button>
       </form>
