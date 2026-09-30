@@ -118,7 +118,7 @@ export default function Home() {
 
     if (profileResult.data?.industry) setType(profileResult.data.industry);
     if (profileResult.data?.business_name) setBusinessName(profileResult.data.business_name);
-    setLeads((leadsResult.data as Lead[]) || []);
+    setLeads(\n      ((leadsResult.data || []) as LeadQueryRow[]).map((lead) => ({\n        ...lead,\n        customer: lead.customer?.[0] ?? null,\n      })),\n    );
     setTasks((tasksResult.data as Task[]) || []);
     setLeadCount(leadsResult.count || 0);
     setHotLeadCount(hotLeadsResult.count || 0);
