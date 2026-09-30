@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
+import { Select } from "../../components/ui/select";
 
 const types=["Real Estate","Salon","Gym","Restaurant","Coaching","Agency","Other"];
 
@@ -107,8 +108,14 @@ export default function OnboardingPage(){
         <div className="md:col-span-2 rounded-3xl border border-white/10 bg-white/[.025] p-6">
           <label className="text-xs text-white/45">Business name *</label>
           <input required value={name} onChange={e=>setName(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3.5 text-sm outline-none focus:border-cyan-400/50" placeholder="e.g. Sharma Properties"/>
-          <label className="mt-5 block text-xs text-white/45">What kind of business is this? *</label>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{types.map(x=><button type="button" key={x} onClick={()=>setType(x)} className={`rounded-xl border px-3 py-3 text-xs transition ${type===x?"border-cyan-400/40 bg-cyan-400/10 text-cyan-300":"border-white/10 bg-black/20 text-white/45 hover:text-white"}`}>{x}</button>)}</div>
+          <div className="mt-5">
+            <Select
+              label="What kind of business is this? *"
+              value={type}
+              onChange={setType}
+              options={types.map((value) => ({ value, label: value }))}
+            />
+          </div>
         </div>
         <div className="rounded-3xl border border-white/10 bg-white/[.025] p-6 md:col-span-2"><label className="text-xs text-white/45">Describe your business</label><textarea value={description} onChange={e=>setDescription(e.target.value)} rows={4} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:border-cyan-400/50" placeholder="What do you sell, who are your customers, and what do you want BizOS to help with?"/></div>
         <div className="rounded-3xl border border-white/10 bg-white/[.025] p-6"><label className="text-xs text-white/45">Business phone</label><input value={phone} onChange={e=>setPhone(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:border-cyan-400/50" placeholder="+91…"/></div>
