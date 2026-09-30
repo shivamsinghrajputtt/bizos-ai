@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "../lib/supabase/client";
 
 type Business = {
   description: string;
@@ -51,12 +53,15 @@ const businesses: Record<string, Business> = {
 const nav = ["Overview", "Leads", "Customers", "Tasks", "AI Assistant"];
 
 export default function Home() {
-  const [type, setType] = useState("Real Estate");
+  const router = useRouter();
+  const supabase = createClient();
+  const [authLoading, setAuthLoading] = useState(true);
+  const [type, setType = useState("Real Estate");
   const [open, setOpen] = useState(false);
   const [activeNav, setActiveNav] = useState("Overview");
   const [command, setCommand] = useState("");
 
-  const business = businesses[type];
+  useEffect(() => {\n    supabase.auth.getUser().then(async ({ data }) => {\n      if (!data.user) { router.replace("/login"); return; }\n      const orgId = localStorage.getItem("bizos_org_id");\n      if (!orgId) { router.replace("/onboarding"); return; }\n      const { data: profile } = await supabase.from("business_profiles").select("industry").eq("organization_id", orgId).maybeSingle();\n      if (profile?.industry && businesses[profile.industry]) setType(profile.industry);\n      setAuthLoading(false);\n    });\n  }, [router]);\n\n  const business = businesses[type];
   const completion = useMemo(() => Math.round((business.modules.length / 6) * 100), [business.modules.length]);
 
   return (
