@@ -105,9 +105,21 @@ alter table tasks enable row level security;
 alter table knowledge_documents enable row level security;
 alter table automations enable row level security;
 
-create policy "org members can view organizations" on organizations for select using (is_org_member(id));
-create policy "users can create organizations" on organizations for insert with check (owner_id = auth.uid());
-create policy "owners can update organizations" on organizations for update using (owner_id = auth.uid());
+create policy "org members can view organizations"
+on organizations for select
+to authenticated
+using ((select is_org_member(id)));
+
+create policy "users can create organizations"
+on organizations for insert
+to authenticated
+with check ((select auth.uid()) = owner_id);
+
+create policy "owners can update organizations"
+on organizations for update
+to authenticated
+using ((select auth.uid()) = owner_id)
+with check ((select auth.uid()) = owner_id);
 
 create policy "members can view membership" on organization_members for select using (user_id = auth.uid() or is_org_member(organization_id));
 create policy "owners can add membership" on organization_members for insert with check (user_id = auth.uid() and is_org_owner(organization_id));
