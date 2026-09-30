@@ -18,10 +18,17 @@ type LeadQueryRow = {
     name: string;
     phone: string | null;
     email: string | null;
-  } | null;
+  }[] | null;
 };
 
-type Lead = Omit<LeadQueryRow, "customer"> & {\n  customer: {\n    id: string;\n    name: string;\n    phone: string | null;\n    email: string | null;\n  } | null;\n};
+type Lead = Omit<LeadQueryRow, "customer"> & {
+  customer: {
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+  } | null;
+};
 
 const stages = ["new", "contacted", "qualified", "proposal", "won", "lost"];
 
@@ -96,8 +103,17 @@ export default function LeadsPage() {
       .eq("organization_id", id)
       .order("created_at", { ascending: false });
 
-    if (queryError) setError(queryError.message);
-    else {\n      const rows = (data || []) as LeadQueryRow[];\n      setLeads(rows.map((lead) => ({ ...lead, customer: lead.customer?.[0] ?? null })));\n    }
+    if (queryError) {
+      setError(queryError.message);
+    } else {
+      const rows = (data || []) as LeadQueryRow[];
+      setLeads(
+        rows.map((lead) => ({
+          ...lead,
+          customer: lead.customer?.[0] ?? null,
+        })),
+      );
+    }
 
     setLoading(false);
   }
