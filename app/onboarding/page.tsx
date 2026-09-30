@@ -10,6 +10,7 @@ export default function OnboardingPage(){
   const router=useRouter();
   const supabase=createClient();
   const [userId,setUserId]=useState<string|null>(null);
+  const [sessionReady,setSessionReady]=useState(false);
   const [name,setName]=useState("");
   const [type,setType]=useState("Real Estate");
   const [description,setDescription]=useState("");
@@ -19,13 +20,72 @@ export default function OnboardingPage(){
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
 
-  useEffect(()=>{supabase.auth.getUser().then(({data})=>{if(!data.user) router.replace("/login"); else {setUserId(data.user.id);setLoading(false)}})},[router]);
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!mounted) return;
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      setUserId(user.id);
+      setSessionReady(true);
+      setLoading(false);
+    }
+
+    loadUser();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setUserId(session.user.id);
+        setSessionReady(true);
+        setLoading(false);
+      } else if (event === "SIGNED_OUT") {
+        router.replace("/login");
+      }
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [router, supabase]);
 
   async function save(e:FormEvent){
-    e.preventDefault(); if(!userId) return;
-    setSaving(true); setError("");
-    const {data:org,error:orgError}=await supabase.from("organizations").insert({name,business_type:type,owner_id:userId}).select("id").single();
-    if(orgError){setError(orgError.message);setSaving(false);return;}
+    e.preventDefault();
+    if (!sessionReady) {
+      setError("Your login session is not ready. Please refresh and sign in again.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      setError("Your login session has expired. Please sign in again.");
+      setSaving(false);
+      router.replace("/login");
+      return;
+    }
+
+    const {data:org,error:orgError}=await supabase
+      .from("organizations")
+      .insert({name,business_type:type,owner_id:user.id})
+      .select("id")
+      .single();
+    if(orgError){
+      setError(orgError.message);
+      setSaving(false);
+      return;
+    }
     const {error:memberError}=await supabase.from("organization_members").insert({organization_id:org.id,user_id:userId,role:"owner"});
     if(memberError){setError(memberError.message);setSaving(false);return;}
     const {error:profileError}=await supabase.from("business_profiles").insert({organization_id:org.id,business_name:name,description,industry:type,phone,website});
