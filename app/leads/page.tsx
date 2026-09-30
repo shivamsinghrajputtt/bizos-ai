@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
+import { Select } from "../../components/ui/select";
 
 type Lead = {
   id: string; source: string | null; stage: string | null; score: number | null;
@@ -10,75 +11,17 @@ type Lead = {
   customer: { id: string; name: string; phone: string | null; email: string | null } | null;
 };
 
-const stages = ["new", "contacted", "qualified", "proposal", "won", "lost"];
-
-function StageSelect({
-  value,
-  onChange,
-  compact = false,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  compact?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    document.addEventListener("click", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
+const stages = ["new", "cfunction StageSelect({ value, onChange, compact = false }: { value: string; onChange: (value: string) => void; compact?: boolean }) {
   return (
-    <div className="relative" onClick={(event) => event.stopPropagation()}>
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-        className={
-          "flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0b0f15] text-left text-white/85 shadow-sm transition hover:border-cyan-400/40 hover:bg-[#0e131b] focus:outline-none focus:ring-2 focus:ring-cyan-400/30 " +
-          (compact ? "px-3 py-2 text-xs" : "px-4 py-3 text-sm")
-        }
-      >
-        <span>{value}</span>
-        <span className={"ml-3 text-white/45 transition-transform " + (open ? "rotate-180" : "")}>⌄</span>
-      </button>
-      {open && (
-        <div
-          role="listbox"
-          aria-label="Lead stage"
-          className="absolute left-0 z-[80] mt-2 w-full min-w-[180px] overflow-hidden rounded-xl border border-white/15 bg-[#0b0f15] p-1 shadow-2xl shadow-black/60 ring-1 ring-black/40"
-        >
-          {stages.map((stage) => (
-            <button
-              key={stage}
-              type="button"
-              role="option"
-              aria-selected={value === stage}
-              onClick={() => {
-                onChange(stage);
-                setOpen(false);
-              }}
-              className={
-                "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition " +
-                (value === stage
-                  ? "bg-cyan-400/10 text-cyan-300"
-                  : "text-white/75 hover:bg-white/[.07] hover:text-white")
-              }
-            >
-              <span className="capitalize">{stage}</span>
-              {value === stage && <span className="text-cyan-300">✓</span>}
-            </button>
-          ))}
+    <Select
+      value={value}
+      onChange={onChange}
+      compact={compact}
+      options={stages.map((stage) => ({ value: stage, label: stage.charAt(0).toUpperCase() + stage.slice(1) }))}
+      label={compact ? undefined : "Stage"}
+    />
+  );
+}        ))}
         </div>
       )}
     </div>
@@ -240,7 +183,7 @@ export default function LeadsPage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-5 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/70 p-5 backdrop-blur-sm">
           <form onSubmit={createLead} className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0a0d12] p-6 shadow-2xl">
             <div className="flex items-center justify-between"><div><div className="text-[10px] tracking-[.18em] text-cyan-400">NEW RECORD</div><h2 className="mt-1 text-xl font-semibold">Create lead</h2></div><button type="button" onClick={()=>setShowForm(false)} className="text-white/30 hover:text-white">✕</button></div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
