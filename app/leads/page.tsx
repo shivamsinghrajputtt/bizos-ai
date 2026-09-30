@@ -12,6 +12,79 @@ type Lead = {
 
 const stages = ["new", "contacted", "qualified", "proposal", "won", "lost"];
 
+function StageSelect({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className={
+          "flex w-full items-center justify-between rounded-xl border border-white/10 bg-[#0b0f15] text-left text-white/85 shadow-sm transition hover:border-cyan-400/40 hover:bg-[#0e131b] focus:outline-none focus:ring-2 focus:ring-cyan-400/30 " +
+          (compact ? "px-3 py-2 text-xs" : "px-4 py-3 text-sm")
+        }
+      >
+        <span>{value}</span>
+        <span className={"ml-3 text-white/45 transition-transform " + (open ? "rotate-180" : "")}>⌄</span>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Lead stage"
+          className="absolute left-0 z-[80] mt-2 w-full min-w-[180px] overflow-hidden rounded-xl border border-white/15 bg-[#0b0f15] p-1 shadow-2xl shadow-black/60 ring-1 ring-black/40"
+        >
+          {stages.map((stage) => (
+            <button
+              key={stage}
+              type="button"
+              role="option"
+              aria-selected={value === stage}
+              onClick={() => {
+                onChange(stage);
+                setOpen(false);
+              }}
+              className={
+                "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition " +
+                (value === stage
+                  ? "bg-cyan-400/10 text-cyan-300"
+                  : "text-white/75 hover:bg-white/[.07] hover:text-white")
+              }
+            >
+              <span className="capitalize">{stage}</span>
+              {value === stage && <span className="text-cyan-300">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LeadsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -156,9 +229,7 @@ export default function LeadsPage() {
               </div>
               <div className="text-sm text-white/50">{lead.source || "—"}</div>
               <div><span className={(lead.score||0)>=70 ? "rounded-full bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-300" : "rounded-full bg-white/5 px-2.5 py-1 text-xs text-white/50"}>{lead.score ?? 0}</span></div>
-              <select value={lead.stage || "new"} onChange={(e)=>updateStage(lead.id,e.target.value)} className="rounded-lg border border-white/10 bg-[#080b10] px-2 py-2 text-xs text-white/70">
-                {stages.map(s=><option key={s}>{s}</option>)}
-              </select>
+              <StageSelect compact value={lead.stage || "new"} onChange={(stage) => updateStage(lead.id, stage)} />
               <div className="flex items-center justify-between gap-2 text-xs text-white/35">
                 <span>{lead.next_follow_up_at ? new Date(lead.next_follow_up_at).toLocaleString() : "Not scheduled"}</span>
                 <button onClick={()=>deleteLead(lead.id)} className="text-red-300/50 hover:text-red-300">Delete</button>
@@ -177,7 +248,7 @@ export default function LeadsPage() {
               <label className="text-xs text-white/45">Phone<input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+91…" className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none"/></label>
               <label className="text-xs text-white/45">Email<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="name@email.com" className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none"/></label>
               <label className="text-xs text-white/45">Source<input value={form.source} onChange={e=>setForm({...form,source:e.target.value})} placeholder="Website / Referral / Instagram" className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none"/></label>
-              <label className="text-xs text-white/45">Stage<select value={form.stage} onChange={e=>setForm({...form,stage:e.target.value})} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none">{stages.map(s=><option key={s}>{s}</option>)}</select></label>
+              <div className="text-xs text-white/45">Stage<div className="mt-2"><StageSelect value={form.stage} onChange={(stage) => setForm({ ...form, stage })} /></div></div>
               <label className="text-xs text-white/45">Lead score (0–100)<input type="number" min="0" max="100" value={form.score} onChange={e=>setForm({...form,score:e.target.value})} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none"/></label>
               <label className="text-xs text-white/45 md:col-span-2">Next follow-up<input type="datetime-local" value={form.next_follow_up_at} onChange={e=>setForm({...form,next_follow_up_at:e.target.value})} className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none"/></label>
               <label className="text-xs text-white/45 md:col-span-2">Notes<textarea rows={3} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none"/></label>
