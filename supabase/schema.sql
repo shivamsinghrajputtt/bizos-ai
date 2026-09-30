@@ -124,3 +124,14 @@ create index organization_members_user_idx on organization_members(user_id);
 create index customers_org_idx on customers(organization_id);
 create index leads_org_stage_idx on leads(organization_id,stage);
 create index tasks_org_status_idx on tasks(organization_id,status);
+
+-- Table privileges required by Supabase Data API for authenticated users.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on table public.organizations to authenticated;
+grant select, insert, update, delete on table public.organization_members to authenticated;
+grant select, insert, update, delete on table public.business_profiles to authenticated;
+grant select, insert, update, delete on table public.customers to authenticated;
+grant select, insert, update, delete on table public.leads to authenticated;
+grant select, insert, update, delete on table public.tasks to authenticated;
+grant select, insert, update, delete on table public.knowledge_documents to authenticated;
+grant select, insert, update, delete on table public.automations to authenticated;
