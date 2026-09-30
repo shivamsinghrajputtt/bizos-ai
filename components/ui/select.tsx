@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type SelectOption = {
   value: string;
@@ -16,6 +17,13 @@ type SelectProps = {
   disabled?: boolean;
 };
 
+type MenuPosition = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+};
+
 export function Select({
   value,
   onChange,
@@ -28,16 +36,56 @@ export function Select({
   const [highlighted, setHighlighted] = useState(
     Math.max(0, options.findIndex((option) => option.value === value)),
   );
+  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const selected = options.find((option) => option.value === value) ?? options[0];
 
+  function updateMenuPosition() {
+    const button = buttonRef.current;
+    if (!button) return;
+
+    const rect = button.getBoundingClientRect();
+    const gap = 8;
+    const viewportPadding = 12;
+    const estimatedMenuHeight = Math.min(6 * 44 + 8, 280);
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const spaceAbove = rect.top - viewportPadding;
+    const openAbove = spaceBelow < Math.min(estimatedMenuHeight, 220) && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(
+      120,
+      Math.min(280, openAbove ? spaceAbove - gap : spaceBelow - gap),
+    );
+
+    setMenuPosition({
+      top: openAbove ? Math.max(viewportPadding, rect.top - maxHeight - gap) : rect.bottom + gap,
+      left: Math.min(
+        Math.max(viewportPadding, rect.left),
+        Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding),
+      ),
+      width: rect.width,
+      maxHeight,
+    });
+  }
+
   useEffect(() => {
-    const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    if (!open) return;
+
+    updateMenuPosition();
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (
+        !rootRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!open) return;
+    const handleViewportChange = () => updateMenuPosition();
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         setOpen(false);
@@ -56,11 +104,17 @@ export function Select({
         }
       }
     };
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", onKeyDown);
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
     return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
     };
   }, [open, options, highlighted, onChange]);
 
@@ -74,18 +128,26 @@ export function Select({
   return (
     <div ref={rootRef} className="relative">
       {label && <span className="mb-2 block text-xs text-white/45">{label}</span>}
+
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (!open) updateMenuPosition();
+          setOpen((current) => !current);
+        }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
+            updateMenuPosition();
             setOpen(true);
-            setHighlighted(Math.max(0, options.findIndex((option) => option.value === value)));
+            setHighlighted(
+              Math.max(0, options.findIndex((option) => option.value === value)),
+            );
           }
         }}
         className={
@@ -94,42 +156,65 @@ export function Select({
         }
       >
         <span className="truncate">{selected.label}</span>
-        <span aria-hidden="true" className={"shrink-0 text-white/45 transition-transform " + (open ? "rotate-180" : "")}>⌄</span>
+        <span
+          aria-hidden="true"
+          className={
+            "shrink-0 text-white/45 transition-transform " +
+            (open ? "rotate-180" : "")
+          }
+        >
+          ⌄
+        </span>
       </button>
 
-      {open && (
-        <div
-          id={listboxId}
-          role="listbox"
-          aria-label={label || "Select an option"}
-          className="absolute left-0 top-full z-30 mt-2 max-h-64 w-full min-w-[180px] overflow-auto rounded-xl border border-white/15 bg-[#0b0f15] p-1 shadow-2xl shadow-black/60 ring-1 ring-black/40"
-        >
-          {options.map((option, index) => (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              aria-selected={value === option.value}
-              onMouseEnter={() => setHighlighted(index)}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-              className={
-                "flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition " +
-                (value === option.value
-                  ? "bg-cyan-400/10 text-cyan-300"
-                  : highlighted === index
-                    ? "bg-white/[.07] text-white"
-                    : "text-white/75 hover:bg-white/[.07] hover:text-white")
-              }
-            >
-              <span className="truncate">{option.label}</span>
-              {value === option.value && <span aria-hidden="true" className="text-cyan-300">✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        menuPosition &&
+        createPortal(
+          <div
+            ref={menuRef}
+            id={listboxId}
+            role="listbox"
+            aria-label={label || "Select an option"}
+            style={{
+              position: "fixed",
+              top: menuPosition.top,
+              left: menuPosition.left,
+              width: menuPosition.width,
+              maxHeight: menuPosition.maxHeight,
+            }}
+            className="z-[100] overflow-y-auto rounded-xl border border-white/15 bg-[#0b0f15] p-1.5 shadow-2xl shadow-black/70 ring-1 ring-cyan-400/10"
+          >
+            {options.map((option, index) => (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={value === option.value}
+                onMouseEnter={() => setHighlighted(index)}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={
+                  "flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition " +
+                  (value === option.value
+                    ? "bg-cyan-400/15 text-cyan-300"
+                    : highlighted === index
+                      ? "bg-white/[.08] text-white"
+                      : "text-white/75 hover:bg-white/[.07] hover:text-white")
+                }
+              >
+                <span className="truncate">{option.label}</span>
+                {value === option.value && (
+                  <span aria-hidden="true" className="text-cyan-300">
+                    ✓
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
