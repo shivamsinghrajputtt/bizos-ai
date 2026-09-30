@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import { Select } from "../../components/ui/select";
 
-type Lead = {
+type LeadQueryRow = {
   id: string;
   source: string | null;
   stage: string | null;
@@ -20,6 +20,8 @@ type Lead = {
     email: string | null;
   } | null;
 };
+
+type Lead = Omit<LeadQueryRow, "customer"> & {\n  customer: {\n    id: string;\n    name: string;\n    phone: string | null;\n    email: string | null;\n  } | null;\n};
 
 const stages = ["new", "contacted", "qualified", "proposal", "won", "lost"];
 
@@ -95,7 +97,7 @@ export default function LeadsPage() {
       .order("created_at", { ascending: false });
 
     if (queryError) setError(queryError.message);
-    else setLeads((data as Lead[]) || []);
+    else {\n      const rows = (data || []) as LeadQueryRow[];\n      setLeads(rows.map((lead) => ({ ...lead, customer: lead.customer?.[0] ?? null })));\n    }
 
     setLoading(false);
   }
