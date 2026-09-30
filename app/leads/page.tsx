@@ -50,7 +50,6 @@ function StageSelect({
         value: stage,
         label: stage.charAt(0).toUpperCase() + stage.slice(1),
       }))}
-      label={compact ? undefined : "Stage"}
     />
   );
 }
